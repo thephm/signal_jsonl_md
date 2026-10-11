@@ -17,7 +17,7 @@ A new script, `signal_jsonl_md.py`, converts Signal Android's native export (`ma
 - Edit history: only the latest text of an edited message is output.
 - Account settings, keys, stickers, call links, distribution lists.
 - Decryption: the export is already decrypted.
-- Anything absent from the sample export: non-image attachments, media that was not downloaded, voice notes, mentions and text styling, view-once and deleted messages, note to self, outgoing group messages. These are neither specified nor tested in this version.
+- Unsupported data: attachments other than images, videos, or audio, media that was not downloaded, mentions and text styling, view-once and deleted messages, note to self, outgoing group messages. Audio and video support was added after the original image-only sample; voice notes with an audio pointer are treated as ordinary audio attachments.
 
 The schema below was inferred from one export (Signal Android, 2026-10-09). It is not taken from Signal documentation.
 
@@ -134,7 +134,7 @@ Attachment files are found by content hash. All 25 files in the sample matched a
    - If the name is already taken by a file with a different hash, insert `-` and the first 6 hex characters of the hash before the extension. In the sample, 1 of the 14 original names repeats.
    - The extension is the original name's if it has one, otherwise the source file's.
 4. Copy or move the file to `<slug>/media/` under that name. If the same hash is referenced twice, copy the file once and link it twice.
-5. Write the same embed as today: `![[<name>|<width>]]` for images.
+5. Write `![[<name>|<width>]]` for images using the existing image settings. Video and audio MIME types (`video/*` and `audio/*`, including those in the shared `mime_types.json`) use `![[<name>]]` without a width, independently of the image-embed setting. Preserve filename/source extensions rather than deriving them from MIME type.
 
 `message_md`'s `move_attachments` reads a flat folder and appends a suffix from the MIME type, which does not fit this export. The new tool overrides it with its own lookup and naming and leaves `message_md` unchanged.
 

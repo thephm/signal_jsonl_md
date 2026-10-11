@@ -533,6 +533,124 @@ class SignalJsonlMdTests(unittest.TestCase):
         self.assertEqual(attachment.width, 640)
         self.assertEqual(stats.attachments_missing, 0)
 
+    def test_audio_and_video_links_are_embedded_without_image_width(self):
+        mime_types = self.the_config.load_mime_types()
+        for content_type, extension in mime_types.items():
+            if not content_type.startswith(("audio/", "video/")):
+                continue
+            filename = f"Screenshot recording.{extension.lstrip('.')}"
+            for image_embed in (True, False):
+                with self.subTest(content_type=content_type, image_embed=image_embed):
+                    self.the_config.image_embed = image_embed
+                    self.the_config.image_width = 450
+                    attachment = converter.message_md.attachment.Attachment()
+                    attachment.type = content_type
+                    attachment.custom_filename = filename
+                    self.assertEqual(
+                        converter._generate_attachment_link(attachment, self.the_config),
+                        f"![[{filename}]]\n",
+                    )
+
+    def test_end_to_end_embeds_and_copies_incoming_and_outgoing_videos(self):
+        self._assert_audio_video_conversion("video/mp4", "mp4")
+
+    def test_end_to_end_embeds_and_copies_incoming_and_outgoing_audio(self):
+        self._assert_audio_video_conversion("audio/mpeg", "mp3")
+
+    def _assert_audio_video_conversion(self, content_type, extension):
+        source_paths = []
+        source_bytes = (b"synthetic incoming recording", b"synthetic outgoing recording")
+        attachments = []
+        hashes = []
+        for index, data in enumerate(source_bytes):
+            digest = hashlib.sha256(data).digest()
+            hashes.append(digest.hex())
+            source_folder = self.export_folder / "files" / "0c"
+            source_folder.mkdir(parents=True, exist_ok=True)
+            source_path = source_folder / f"export-recording-{index}.{extension}"
+            source_path.write_bytes(data)
+            source_paths.append(source_path)
+            pointer = {
+                "locatorInfo": {
+                    "plaintextHash": base64.b64encode(digest).decode("ascii")
+                },
+                "contentType": content_type,
+            }
+            if index == 0:
+                pointer["fileName"] = f"Recording #1.{extension}"
+            attachments.append({"pointer": pointer})
+
+        self.write_export([
+            {
+                "chatId": "10",
+                "authorId": "2",
+                "dateSent": "1704067200000",
+                "incoming": {},
+                "standardMessage": {"attachments": [attachments[0]] * 2},
+            },
+            {
+                "chatId": "10",
+                "authorId": "1",
+                "dateSent": "1704067201000",
+                "outgoing": {},
+                "standardMessage": {
+                    "text": {"body": "Recording caption"},
+                    "attachments": [attachments[1]],
+                },
+            },
+        ])
+        self.the_config.output_folder = str(self.export_folder / "vault")
+        self.the_config.people_subfolder = "People"
+        self.the_config.groups_subfolder = "groups"
+        self.the_config.people_folder = str(
+            Path(self.the_config.output_folder) / self.the_config.people_subfolder
+        )
+        self.the_config.groups_folder = str(
+            Path(self.the_config.people_folder) / self.the_config.groups_subfolder
+        )
+        incoming_media_folder = Path(self.the_config.people_folder) / "pat" / "media"
+        incoming_media_folder.mkdir(parents=True)
+        (incoming_media_folder / f"Recording -1.{extension}").write_bytes(b"existing recording")
+        stats = converter.RunStats()
+        overrides = converter._install_shared_overrides(stats)
+
+        def load_callback(dest_file, messages, reactions, config_obj):
+            return converter.load_messages(
+                dest_file, messages, reactions, config_obj, stats, self.export_folder
+            )
+
+        try:
+            converter.message_md.get_markdown(self.the_config, load_callback, [], [])
+        finally:
+            converter._restore_shared_overrides(overrides)
+
+        markdown_file = (
+            Path(self.the_config.people_folder)
+            / "pat"
+            / f"{datetime.fromtimestamp(1704067200):%Y-%m-%d}.md"
+        )
+        incoming_name = f"Recording -1-{hashes[0][:6]}.{extension}"
+        outgoing_name = (
+            f"signal-{datetime.fromtimestamp(1704067201):%Y-%m-%d-%H%M%S}.{extension}"
+        )
+        output_text = markdown_file.read_text(encoding="utf-8")
+        self.assertEqual(output_text.count(f"![[{incoming_name}]]"), 2)
+        self.assertIn(f"![[{outgoing_name}]]", output_text)
+        self.assertIn("Recording caption", output_text)
+        self.assertNotIn(f".{extension}|", output_text)
+        self.assertEqual(
+            (incoming_media_folder / incoming_name).read_bytes(), source_bytes[0]
+        )
+        self.assertEqual(
+            (Path(self.the_config.people_folder) / "me" / "media" / outgoing_name).read_bytes(),
+            source_bytes[1],
+        )
+        for source_path, data in zip(source_paths, source_bytes):
+            self.assertEqual(source_path.read_bytes(), data)
+        self.assertEqual(stats.attachments_copied, 2)
+        self.assertEqual(stats.attachments_missing, 0)
+        self.assertEqual(stats.skipped, {})
+
     def test_attachment_is_found_by_content_when_export_filename_differs(self):
         source_bytes = b"synthetic image bytes"
         attachment_hash = hashlib.sha256(source_bytes).digest()
@@ -669,6 +787,50 @@ class SignalJsonlMdTests(unittest.TestCase):
         self.assertEqual(media_file.read_bytes(), source_bytes)
         self.assertTrue(self.export_file.exists())
         self.assertEqual(stats.attachments_copied, 1)
+
+    def test_attachment_reactions_only_have_quoted_separator_after_caption(self):
+        self.the_config.include_reactions = True
+        for content_type, filename in (
+            ("image/jpeg", "IMG_1396.jpg"),
+            ("video/mp4", "video.mp4"),
+            ("audio/mpeg", "audio.mp3"),
+        ):
+            for body in ("", "Caption"):
+                for include_context in (True, False):
+                    with self.subTest(
+                        content_type=content_type,
+                        body=body,
+                        include_context=include_context,
+                    ):
+                        the_message = converter.message.Message()
+                        the_message.timestamp = 1704067200
+                        the_message.set_date_time()
+                        the_message.from_slug = "pat"
+                        the_message.to_slugs = ["me"]
+                        the_message.body = body
+                        attachment = converter.message_md.attachment.Attachment()
+                        attachment.type = content_type
+                        attachment.custom_filename = filename
+                        attachment.generate_link = lambda config_obj: (
+                            converter._generate_attachment_link(attachment, config_obj)
+                        )
+                        the_message.add_attachment(attachment)
+                        reaction = converter.message.Reaction()
+                        reaction.emoji = "❤️"
+                        reaction.from_slug = "pat"
+                        the_message.reactions.append(reaction)
+
+                        rendered = converter.markdown.format_markdown(
+                            the_message, self.the_config, self.contact,
+                            include_context=include_context,
+                        )
+
+                        self.assertIn("> ❤️ *pat*", rendered)
+                        if body:
+                            self.assertIn("> Caption\n> \n> ❤️ *pat*", rendered)
+                        else:
+                            self.assertIn("]]\n\n> ❤️ *pat*", rendered)
+                            self.assertNotIn("\n> \n", rendered)
 
     def test_consecutive_messages_from_same_sender_share_one_header(self):
         self.contact.identity.first_name = "Bernie"

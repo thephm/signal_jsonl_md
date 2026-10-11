@@ -514,8 +514,8 @@ def _parse_attachment(
     content_type = _string(
         pointer.get("contentType") or raw_attachment.get("contentType")
     )
-    if not content_type.startswith("image/"):
-        stats.skipped["unsupported non-image attachment"] += 1
+    if not content_type.startswith(("image/", "video/", "audio/")):
+        stats.skipped["unsupported attachment type"] += 1
         return None
 
     attachment = message_md.attachment.Attachment()
@@ -903,7 +903,10 @@ def _generate_attachment_link(the_attachment, config_obj):
         return the_attachment.generate_link_original(config_obj)
 
     link = ""
-    if the_attachment.is_image() and config_obj.image_embed:
+    if (
+        the_attachment.type.startswith(("video/", "audio/"))
+        or (the_attachment.is_image() and config_obj.image_embed)
+    ):
         link = "!"
     link += "[[" + filename
     image_width = (

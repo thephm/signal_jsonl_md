@@ -75,7 +75,9 @@ The message body, quote text and author, and reactions are read from the corresp
 
 Consecutive messages from the same sender in the same conversation share one sender/time header. Text messages are separated by a quoted blank line; images start after an unquoted blank line. A message from another sender starts a new header.
 
-Attachments are located in `files/` by the SHA-256 hash in the export, rather than by MIME type. The converter first checks the hash-derived path, then falls back to hashing files under `files/` by content; this handles exports whose media filenames differ from the plaintext content hashes. It copies matching media to the conversation's `media/` folder and embeds images using Obsidian links. It uses the supplied filename when available, sanitizes unsafe characters, and otherwise creates a timestamp-based name. If a filename conflicts with a different file, a short hash suffix is added. Repeated references to the same hash reuse one copied file.
+Reactions on attachment-only messages follow the embed without an empty quoted line. Messages with a caption retain a quoted blank line between the caption and reactions.
+
+Attachments are located in `files/` by the SHA-256 hash in the export, rather than by MIME type. The converter first checks the hash-derived path, then falls back to hashing files under `files/` by content; this handles exports whose media filenames differ from the plaintext content hashes. It copies matching images, videos, and audio to the shared media output location (normally the conversation's `media/` folder; outgoing one-to-one media goes under your person slug). Images use the existing Obsidian links and width settings; videos and audio use `![[filename.ext]]` embeds without a width, independently of the `image-embed` setting. It uses the supplied filename when available, sanitizes unsafe characters, and otherwise creates a timestamp-based name. If a filename conflicts with a different file, a short hash suffix is added. Repeated references to the same hash reuse one copied file per media folder.
 
 Missing or undownloaded media is reported as a warning; the message text is kept and the embed is omitted. Link-preview images are not embedded. The end-of-run summary reports messages written, skipped items by reason, attachments copied, and missing attachments.
 
@@ -87,7 +89,7 @@ As with `message_md`, a message is appended only to a matching file created with
 
 - Only supported incoming and outgoing message records are converted. Update records (such as identity changes, group joins, calls, and profile changes) are skipped.
 - Only the latest text of an edited message is output.
-- Unsupported or absent export data—including non-image attachments, media not downloaded in the export, voice notes, mentions and text styling, view-once or deleted messages, note to self, and outgoing group messages—is outside the current scope.
+- Unsupported or absent export data—including attachments other than images, videos, or audio, media not downloaded in the export, mentions and text styling, view-once or deleted messages, note to self, and outgoing group messages—is outside the current scope. Voice notes are handled as ordinary audio attachments when their pointer includes an audio MIME type and usable content hash.
 - Account settings, keys, stickers, call links, and distribution lists are not processed.
 - Timestamps are rendered in the machine's local time zone. Input and output use UTF-8.
 
