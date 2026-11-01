@@ -849,9 +849,12 @@ class SignalJsonlMdTests(unittest.TestCase):
         )
 
         messages = []
-        for body in ("Nice spot", "Doing okay, some pain, but the Advil kicked in."):
+        for timestamp, body in (
+            (1704067200, "Nice spot"),
+            (1704067260, "Doing okay, some pain, but the Advil kicked in."),
+        ):
             the_message = converter.message.Message()
-            the_message.timestamp = 1704067200
+            the_message.timestamp = timestamp
             the_message.set_date_time()
             the_message.from_slug = "pat"
             the_message.to_slugs = ["me"]
@@ -863,7 +866,7 @@ class SignalJsonlMdTests(unittest.TestCase):
         reaction.from_slug = "ann"
         messages[1].reactions.append(reaction)
         image_message = converter.message.Message()
-        image_message.timestamp = 1704067201
+        image_message.timestamp = 1704067261
         image_message.set_date_time()
         image_message.from_slug = "pat"
         image_message.to_slugs = ["me"]
@@ -871,13 +874,24 @@ class SignalJsonlMdTests(unittest.TestCase):
         image.generate_link = lambda config_obj: "![[photo.jpg|450]]\n"
         image_message.add_attachment(image)
         messages.append(image_message)
+        later_message = converter.message.Message()
+        later_message.timestamp = 1704067322
+        later_message.set_date_time()
+        later_message.from_slug = "pat"
+        later_message.to_slugs = ["me"]
+        later_message.body = "Later message"
+        messages.append(later_message)
         converter.message.add_messages(messages, self.the_config)
 
-        converter.message_md.markdown.create_markdown_files(
-            self.contact,
-            Path(self.the_config.people_folder) / self.contact.slug,
-            self.the_config,
-        )
+        overrides = converter._install_shared_overrides(converter.RunStats())
+        try:
+            converter.message_md.markdown.create_markdown_files(
+                self.contact,
+                Path(self.the_config.people_folder) / self.contact.slug,
+                self.the_config,
+            )
+        finally:
+            converter._restore_shared_overrides(overrides)
 
         output_file = (
             Path(self.the_config.people_folder)
@@ -885,7 +899,7 @@ class SignalJsonlMdTests(unittest.TestCase):
             / f"{datetime.fromtimestamp(1704067200):%Y-%m-%d}.md"
         )
         output_text = output_file.read_text(encoding="utf-8")
-        self.assertEqual(output_text.count("Bernie"), 1)
+        self.assertEqual(output_text.count("Bernie"), 2)
         self.assertIn(
             "> Nice spot\n> \n> Doing okay, some pain, but the Advil kicked in.",
             output_text,
@@ -893,6 +907,7 @@ class SignalJsonlMdTests(unittest.TestCase):
         self.assertIn("> ❤️ *ann*", output_text)
         self.assertIn("*ann*   \n\n![[photo.jpg|450]]", output_text)
         self.assertNotIn("> \n![[photo.jpg|450]]", output_text)
+        self.assertIn("> Later message", output_text)
 
     def test_cli_setup_uses_shared_config_and_writes_output(self):
         self.write_export([{
