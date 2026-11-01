@@ -73,7 +73,7 @@ The message body, quote text and author, and reactions are read from the corresp
 
 `message_md` writes one `YYYY-MM-DD.md` file per day in the configured output location: person conversations go under the configured people folder and person slug; group conversations go under the configured groups folder and group slug. It supplies the existing frontmatter (`tags`, `people`, `date`, `time`, and `service: signal`, with the group slug included in group tags) based on the `Chat.md` template in `hal_md`. It also supplies sender/time headers, quoted text, optional reactions, and attachment embeds. Message lines are prefixed with ` > `.
 
-Consecutive messages from the same sender in the same conversation share one sender/time header. Text messages are separated by a quoted blank line; images start after an unquoted blank line. A message from another sender starts a new header.
+Consecutive messages from the same sender in the same conversation share one sender/time header when they are no more than one minute apart. Longer gaps start a new header. Text messages are separated by a quoted blank line; images start after an unquoted blank line. A message from another sender starts a new header.
 
 Reactions on attachment-only messages follow the embed without an empty quoted line. Messages with a caption retain a quoted blank line between the caption and reactions.
 

@@ -921,11 +921,28 @@ def _generate_attachment_link(the_attachment, config_obj):
 def _install_shared_overrides(stats):
     original_setup_folders = message_md.setup_folders
     original_move_attachments = message_md.attachment.move_attachments
+    original_format_markdown = markdown.format_markdown
     attachment_class = message_md.attachment.Attachment
     original_generate_link = attachment_class.generate_link
+    previous_message = None
 
     def preserve_export(config_obj):
         return config_obj.filename
+
+    def format_markdown_with_header_gap(
+        the_message, config_obj, entity, include_context=True
+    ):
+        nonlocal previous_message
+        if not include_context and previous_message is not None:
+            elapsed = the_message.timestamp - previous_message.timestamp
+            if elapsed < 0 or elapsed > 60:
+                include_context = True
+        rendered = original_format_markdown(
+            the_message, config_obj, entity, include_context=include_context
+        )
+        if rendered:
+            previous_message = the_message
+        return rendered
 
     def copy_attachments(entities, folder, config_obj):
         _copy_signal_attachments(
@@ -941,12 +958,23 @@ def _install_shared_overrides(stats):
 
     message_md.setup_folders = preserve_export
     message_md.attachment.move_attachments = copy_attachments
+    markdown.format_markdown = format_markdown_with_header_gap
     attachment_class.generate_link = generate_link
-    return original_setup_folders, original_move_attachments, original_generate_link
+    return (
+        original_setup_folders,
+        original_move_attachments,
+        original_generate_link,
+        original_format_markdown,
+    )
 
 
 def _restore_shared_overrides(overrides):
-    message_md.setup_folders, message_md.attachment.move_attachments, generate_link = overrides
+    (
+        message_md.setup_folders,
+        message_md.attachment.move_attachments,
+        generate_link,
+        markdown.format_markdown,
+    ) = overrides
     message_md.attachment.Attachment.generate_link = generate_link
 
 
